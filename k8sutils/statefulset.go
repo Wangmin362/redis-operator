@@ -116,6 +116,7 @@ func patchStatefulSet(storedStateful *appsv1.StatefulSet, newStateful *appsv1.St
 			storedCapacity, _ := strconv.ParseInt(annotations["storageCapacity"], 0, 64)
 			if len(newStateful.Spec.VolumeClaimTemplates) != 0 {
 				stateCapacity := newStateful.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests.Storage().Value()
+				// 说明新的提交扩大了PVC的容量，因为PVC容量只能增加，不能减少
 				if storedCapacity != stateCapacity {
 					listOpt := metav1.ListOptions{
 						LabelSelector: labels.FormatLabels(
@@ -126,17 +127,20 @@ func patchStatefulSet(storedStateful *appsv1.StatefulSet, newStateful *appsv1.St
 							},
 						),
 					}
+					// 查询以前的PVC
 					pvcs, err := generateK8sClient().CoreV1().PersistentVolumeClaims(storedStateful.Namespace).List(context.Background(), listOpt)
 					if err != nil {
 						return err
 					}
 					updateFailed := false
 					realUpdate := false
+					// 由于Redis集群每个节点多有PVC，因此每个PVC都需要改变
 					for _, pvc := range pvcs.Items {
 						realCapacity := pvc.Spec.Resources.Requests.Storage().Value()
 						if realCapacity != stateCapacity {
 							realUpdate = true
 							pvc.Spec.Resources.Requests = newStateful.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests
+							// 给每个节点的PVC扩容
 							_, err = generateK8sClient().CoreV1().PersistentVolumeClaims(storedStateful.Namespace).Update(context.Background(), &pvc, metav1.UpdateOptions{})
 							if err != nil {
 								if !updateFailed {
