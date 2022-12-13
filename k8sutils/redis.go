@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"k8s.io/client-go/rest"
 	"net"
 	"strconv"
 	"strings"
@@ -372,10 +373,67 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 		Tty:    false,
 	})
 	if err != nil {
-		logger.Error(err, "Could not execute command", "Command", cmd, "Output", execOut.String(), "Error", execErr.String())
-		return
+		cmdResult := execOut.String()
+		logger.Info("Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
+		errorInfo := `Either the node already knows other nodes (check with CLUSTER NODES) or contains some key in database 0`
+		if !strings.Contains(cmdResult, errorInfo) {
+			return
+		}
+
+		// delete aof/rdb nodes.conf file and exec flushdb command
+		if err := cleanupDatabase(cr, req, config, pod.Spec.Containers[targetContainer].Name, logger); err != nil {
+			logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
+			return
+		}
 	}
 	logger.Info("Successfully executed the command", "Command", cmd, "Output", execOut.String())
+}
+
+func cleanupDatabase(cr *redisv1beta1.RedisCluster, req *rest.Request, config *rest.Config, containerName string,
+	logger logr.Logger) error {
+
+	pass, err := getRedisPassword(cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
+	if err != nil {
+		logger.Error(err, "Error in getting redis password")
+	}
+
+	execCmd := func(cmd []string) error {
+		var execOut bytes.Buffer
+		var execErr bytes.Buffer
+
+		req.VersionedParams(&corev1.PodExecOptions{
+			Container: containerName,
+			Command:   cmd,
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+		exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+		if err != nil {
+			logger.Error(err, "Failed to init executor")
+			return err
+		}
+
+		err = exec.Stream(remotecommand.StreamOptions{
+			Stdout: &execOut,
+			Stderr: &execErr,
+			Tty:    false,
+		})
+		if err != nil {
+			logger.Info("Could not execute command", "Command", cmd, "Output", execOut.String(), "Error", execErr.String())
+		}
+
+		return err
+	}
+
+	if err := execCmd([]string{"rm", "-f", "dump.rdb", "appendonly.aof", "nodes.conf"}); err != nil {
+		return err
+	}
+
+	if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // getContainerID will return the id of container from pod
