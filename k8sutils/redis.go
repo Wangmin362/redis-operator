@@ -381,7 +381,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 		}
 
 		// delete aof/rdb nodes.conf file and exec flushdb command
-		if err := cleanupDatabase(cr, req, config, pod.Spec.Containers[targetContainer].Name, logger); err != nil {
+		if err := cleanupDatabase(cr, req, config, pod.Spec.Containers[targetContainer].Name, cmd, logger); err != nil {
 			logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
 			return
 		}
@@ -390,7 +390,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 }
 
 func cleanupDatabase(cr *redisv1beta1.RedisCluster, req *rest.Request, config *rest.Config, containerName string,
-	logger logr.Logger) error {
+	cmd []string, logger logr.Logger) error {
 
 	pass, err := getRedisPassword(cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 	if err != nil {
@@ -430,6 +430,11 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, req *rest.Request, config *r
 	}
 
 	if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}); err != nil {
+		return err
+	}
+
+	// try again:  add current node to redis cluster
+	if err := execCmd(cmd); err != nil {
 		return err
 	}
 
