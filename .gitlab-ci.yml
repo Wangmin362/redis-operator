@@ -1,0 +1,23 @@
+include:
+  - project: 'devops/gitlab-cicd-template'
+    ref: main
+    file: '/golang/build-image/.gitlab-ci.yml'
+
+stages:
+  - build
+
+variables: &global-variables
+  # 用于拼接镜像名
+  MODULE_PREFIX: redis
+  # 镜像私仓里的项目
+  IMAGE_GROUP: community/redis
+
+########################### build阶段 ###########################
+
+#打包镜像job
+build_interface_image:
+  extends:
+    - .golang_build_image_base
+  variables:
+    <<: *global-variables
+    SUB_MODULE: operator
