@@ -10,7 +10,7 @@ variables: &global-variables
   # 用于拼接镜像名
   MODULE_PREFIX: redis
   # 镜像私仓里的项目
-  IMAGE_GROUP: community/redis
+  IMAGE_GROUP: devops
 
 ########################### build阶段 ###########################
 
