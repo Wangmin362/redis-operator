@@ -6,4 +6,4 @@ USER root
 COPY bin/$SUB_MODULE /manager
 RUN chmod +x /manager
 
-CMD ["./manager"]
+CMD ["/manager"]
