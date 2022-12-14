@@ -428,15 +428,18 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, contain
 	if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}); err != nil {
 		return err
 	}
+	logger.Info("rm -f dump.rdb appendonly.aof nodes.conf done")
 
 	if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}); err != nil {
 		return err
 	}
+	logger.Info("flushdb done")
 
 	// try again:  add current node to redis cluster
 	if err := execCmd(cmd); err != nil {
 		return err
 	}
+	logger.Info("try redis cluster add node again: ", "cmd", cmd)
 
 	return nil
 }
