@@ -13,7 +13,6 @@ variables: &global-variables
   IMAGE_GROUP: devops
 
 ########################### build阶段 ###########################
-
 #打包镜像job
 build_interface_image:
   extends:
