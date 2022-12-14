@@ -425,7 +425,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, req *rest.Request, config *r
 		return err
 	}
 
-	if err := execCmd([]string{"shell", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}); err != nil {
+	if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}); err != nil {
 		return err
 	}
 
