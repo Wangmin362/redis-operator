@@ -429,48 +429,28 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 	for i := int32(0); i < cr.Spec.GetReplicaCounts("leader"); i++ {
 		containerName := "redis-leader"
 		podName := fmt.Sprintf("%s-%d", containerName, i)
-		if err := execCmd([]string{"sh", "-c", "pwd"}, containerName, podName); err != nil {
-			return err
-		}
-		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
-			return err
-		}
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
-
 		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushdb"}, containerName, podName); err != nil {
 			return err
 		}
-
-		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "cluster", "reset"}, containerName, podName); err != nil {
 			return err
 		}
 	}
-	logger.Info("leader done!!!")
 
 	// cleanup follower data
 	for i := int32(0); i < cr.Spec.GetReplicaCounts("follower"); i++ {
 		containerName := "redis-follower"
 		podName := fmt.Sprintf("%s-%d", containerName, i)
-		if err := execCmd([]string{"sh", "-c", "pwd"}, containerName, podName); err != nil {
-			return err
-		}
-		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
-			return err
-		}
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
-		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "cluster", "reset"}, containerName, podName); err != nil {
 			return err
 		}
 	}
-	logger.Info("follower done!!!")
-
-	logger.Info("done!!!")
-	logger.Info("done!!!")
-	logger.Info("done!!!")
 
 	return nil
 }
