@@ -420,6 +420,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 		if err != nil {
 			logger.Info("Could not execute command", "Command", cmd, "Output", execOut.String(), "Error", execErr.String())
 		}
+		logger.Info("execute command", "Command", cmd, "Output", execOut.String())
 
 		return err
 	}
@@ -428,6 +429,10 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 	for i := int32(0); i < cr.Spec.GetReplicaCounts("leader"); i++ {
 		containerName := "redis-leader"
 		podName := fmt.Sprintf("%s-%d", containerName, i)
+		if err := execCmd([]string{"sh", "-c", "pwd"}, containerName, podName); err != nil {
+			return err
+		}
+
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
@@ -437,6 +442,10 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 			return err
 		}
 		logger.Info("flushdb done", "podName", podName)
+
+		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
+			return err
+		}
 	}
 
 	// cleanup follower data
