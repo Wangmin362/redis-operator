@@ -432,7 +432,9 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 		if err := execCmd([]string{"sh", "-c", "pwd"}, containerName, podName); err != nil {
 			return err
 		}
-
+		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
+			return err
+		}
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
