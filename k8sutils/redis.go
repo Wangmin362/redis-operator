@@ -425,7 +425,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 	}
 
 	// cleanup leader data
-	for i := int32(0); i < *(cr.Spec.RedisLeader.Replicas); i++ {
+	for i := int32(0); i < cr.Spec.GetReplicaCounts("leader"); i++ {
 		containerName := "redis-leader"
 		podName := fmt.Sprintf("%s-%d", containerName, i)
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
@@ -440,7 +440,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 	}
 
 	// cleanup follower data
-	for i := int32(0); i < *(cr.Spec.RedisFollower.Replicas); i++ {
+	for i := int32(0); i < cr.Spec.GetReplicaCounts("follower"); i++ {
 		containerName := "redis-follower"
 		podName := fmt.Sprintf("%s-%d", containerName, i)
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
