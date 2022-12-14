@@ -420,7 +420,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 		if err != nil {
 			logger.Info("Could not execute command", "Command", cmd, "Output", execOut.String(), "Error", execErr.String())
 		}
-		logger.Info("execute command", "Command", cmd, "Output", execOut.String())
+		log.Info("execute command", "Command", cmd, "Output", execOut.String(), "PodName", podName, "ContainerName", containerName)
 
 		return err
 	}
@@ -438,32 +438,43 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
-		logger.Info("rm -f dump.rdb appendonly.aof nodes.conf done", "podName", podName)
 
-		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}, containerName, podName); err != nil {
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushdb"}, containerName, podName); err != nil {
 			return err
 		}
-		logger.Info("flushdb done", "podName", podName)
 
 		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
 			return err
 		}
 	}
+	logger.Info("leader done!!!")
 
 	// cleanup follower data
 	for i := int32(0); i < cr.Spec.GetReplicaCounts("follower"); i++ {
 		containerName := "redis-follower"
 		podName := fmt.Sprintf("%s-%d", containerName, i)
+		if err := execCmd([]string{"sh", "-c", "pwd"}, containerName, podName); err != nil {
+			return err
+		}
+		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
+			return err
+		}
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
-		logger.Info("rm -f dump.rdb appendonly.aof nodes.conf done", "podName", podName)
 
-		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}, containerName, podName); err != nil {
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushdb"}, containerName, podName); err != nil {
 			return err
 		}
-		logger.Info("flushdb done", "podName", podName)
+		if err := execCmd([]string{"sh", "-c", "ls -ll"}, containerName, podName); err != nil {
+			return err
+		}
 	}
+	logger.Info("follower done!!!")
+
+	logger.Info("done!!!")
+	logger.Info("done!!!")
+	logger.Info("done!!!")
 
 	return nil
 }
