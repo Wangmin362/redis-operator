@@ -381,7 +381,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 		}
 
 		// delete aof/rdb nodes.conf file and exec flushdb command
-		if err := cleanupDatabase(cr, config, pod.Spec.Containers[targetContainer].Name, podName, cmd, logger); err != nil {
+		if err := cleanupDatabase(cr, config, logger); err != nil {
 			logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
 			return
 		}
@@ -389,15 +389,14 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 	logger.Info("Successfully executed the command", "Command", cmd, "Output", execOut.String())
 }
 
-func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, containerName, podName string,
-	cmd []string, logger logr.Logger) error {
+func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger logr.Logger) error {
 
 	pass, err := getRedisPassword(cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 	if err != nil {
 		logger.Error(err, "Error in getting redis password")
 	}
 
-	execCmd := func(cmd []string) error {
+	execCmd := func(cmd []string, containerName, podName string) error {
 		var execOut bytes.Buffer
 		var execErr bytes.Buffer
 		req := generateK8sClient().CoreV1().RESTClient().Post().Resource("pods").Name(podName).Namespace(cr.Namespace).SubResource("exec")
@@ -425,21 +424,35 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, contain
 		return err
 	}
 
-	if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}); err != nil {
-		return err
-	}
-	logger.Info("rm -f dump.rdb appendonly.aof nodes.conf done")
+	// cleanup leader data
+	for i := int32(0); i < *(cr.Spec.RedisLeader.Replicas); i++ {
+		containerName := "redis-leader"
+		podName := fmt.Sprintf("%s-%d", containerName, i)
+		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
+			return err
+		}
+		logger.Info("rm -f dump.rdb appendonly.aof nodes.conf done", "podName", podName)
 
-	if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}); err != nil {
-		return err
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}, containerName, podName); err != nil {
+			return err
+		}
+		logger.Info("flushdb done", "podName", podName)
 	}
-	logger.Info("flushdb done")
 
-	// try again:  add current node to redis cluster
-	if err := execCmd(cmd); err != nil {
-		return err
+	// cleanup follower data
+	for i := int32(0); i < *(cr.Spec.RedisFollower.Replicas); i++ {
+		containerName := "redis-follower"
+		podName := fmt.Sprintf("%s-%d", containerName, i)
+		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
+			return err
+		}
+		logger.Info("rm -f dump.rdb appendonly.aof nodes.conf done", "podName", podName)
+
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}, containerName, podName); err != nil {
+			return err
+		}
+		logger.Info("flushdb done", "podName", podName)
 	}
-	logger.Info("try redis cluster add node again: ", "cmd", cmd)
 
 	return nil
 }
