@@ -381,7 +381,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 		}
 
 		// delete aof/rdb nodes.conf file and exec flushdb command
-		if err := cleanupDatabase(cr, req, config, pod.Spec.Containers[targetContainer].Name, cmd, logger); err != nil {
+		if err := cleanupDatabase(cr, config, pod.Spec.Containers[targetContainer].Name, podName, cmd, logger); err != nil {
 			logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
 			return
 		}
@@ -389,7 +389,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 	logger.Info("Successfully executed the command", "Command", cmd, "Output", execOut.String())
 }
 
-func cleanupDatabase(cr *redisv1beta1.RedisCluster, req *rest.Request, config *rest.Config, containerName string,
+func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, containerName, podName string,
 	cmd []string, logger logr.Logger) error {
 
 	pass, err := getRedisPassword(cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
@@ -400,7 +400,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, req *rest.Request, config *r
 	execCmd := func(cmd []string) error {
 		var execOut bytes.Buffer
 		var execErr bytes.Buffer
-
+		req := generateK8sClient().CoreV1().RESTClient().Post().Resource("pods").Name(podName).Namespace(cr.Namespace).SubResource("exec")
 		req.VersionedParams(&corev1.PodExecOptions{
 			Container: containerName,
 			Command:   cmd,
