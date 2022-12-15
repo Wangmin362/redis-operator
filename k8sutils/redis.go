@@ -391,6 +391,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 				logger.Info("[Again] Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
 				return
 			}
+			logger.Info("[Again] execute command successful", "Command", cmd, "Output", cmdResult)
 		}
 
 		addNodeError := `Not all 16384 slots are covered by nodes`
