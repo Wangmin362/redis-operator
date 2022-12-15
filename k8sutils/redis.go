@@ -354,35 +354,48 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 		return
 	}
 
-	req := generateK8sClient().CoreV1().RESTClient().Post().Resource("pods").Name(podName).Namespace(cr.Namespace).SubResource("exec")
-	req.VersionedParams(&corev1.PodExecOptions{
-		Container: pod.Spec.Containers[targetContainer].Name,
-		Command:   cmd,
-		Stdout:    true,
-		Stderr:    true,
-	}, scheme.ParameterCodec)
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
-	if err != nil {
-		logger.Error(err, "Failed to init executor")
-		return
+	execCmd := func() error {
+		req := generateK8sClient().CoreV1().RESTClient().Post().Resource("pods").Name(podName).Namespace(cr.Namespace).SubResource("exec")
+		req.VersionedParams(&corev1.PodExecOptions{
+			Container: pod.Spec.Containers[targetContainer].Name,
+			Command:   cmd,
+			Stdout:    true,
+			Stderr:    true,
+		}, scheme.ParameterCodec)
+		exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+		if err != nil {
+			logger.Error(err, "Failed to init executor")
+			return err
+		}
+
+		err = exec.Stream(remotecommand.StreamOptions{
+			Stdout: &execOut,
+			Stderr: &execErr,
+			Tty:    false,
+		})
+		return err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdout: &execOut,
-		Stderr: &execErr,
-		Tty:    false,
-	})
-	if err != nil {
+	if err := execCmd(); err != nil {
 		cmdResult := execOut.String()
 		logger.Info("Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
 		createClusterError := `Either the node already knows other nodes (check with CLUSTER NODES) or contains some key in database 0`
-		addNodeError := `Not all 16384 slots are covered by nodes`
-		if strings.Contains(cmdResult, createClusterError) || strings.Contains(cmdResult, addNodeError) {
+		if strings.Contains(cmdResult, createClusterError) {
 			// delete aof/rdb nodes.conf file and exec flushdb command
 			if err := cleanupDatabase(cr, config, logger); err != nil {
 				logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
 				return
 			}
+
+			if err := execCmd(); err != nil {
+				logger.Info("[Again] Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
+				return
+			}
+		}
+
+		addNodeError := `Not all 16384 slots are covered by nodes`
+		if strings.Contains(cmdResult, addNodeError) {
+			// TODO
 		}
 	}
 	logger.Info("Successfully executed the command", "Command", cmd, "Output", execOut.String())
