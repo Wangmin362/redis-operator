@@ -375,15 +375,14 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 	if err != nil {
 		cmdResult := execOut.String()
 		logger.Info("Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
-		errorInfo := `Either the node already knows other nodes (check with CLUSTER NODES) or contains some key in database 0`
-		if !strings.Contains(cmdResult, errorInfo) {
-			return
-		}
-
-		// delete aof/rdb nodes.conf file and exec flushdb command
-		if err := cleanupDatabase(cr, config, logger); err != nil {
-			logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
-			return
+		createClusterError := `Either the node already knows other nodes (check with CLUSTER NODES) or contains some key in database 0`
+		addNodeError := `Not all 16384 slots are covered by nodes`
+		if strings.Contains(cmdResult, createClusterError) || strings.Contains(cmdResult, addNodeError) {
+			// delete aof/rdb nodes.conf file and exec flushdb command
+			if err := cleanupDatabase(cr, config, logger); err != nil {
+				logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
+				return
+			}
 		}
 	}
 	logger.Info("Successfully executed the command", "Command", cmd, "Output", execOut.String())
