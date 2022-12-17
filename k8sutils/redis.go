@@ -390,8 +390,9 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 			if err := execCmd(); err != nil {
 				logger.Info("[Again] Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
 				return
+			} else {
+				logger.Info("[Again] execute command successful", "Command", cmd, "Output", cmdResult)
 			}
-			logger.Info("[Again] execute command successful", "Command", cmd, "Output", cmdResult)
 		}
 
 		addNodeError := `Not all 16384 slots are covered by nodes`
@@ -445,7 +446,7 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 		if err := execCmd([]string{"sh", "-c", "rm -f dump.rdb appendonly.aof nodes.conf"}, containerName, podName); err != nil {
 			return err
 		}
-		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushdb"}, containerName, podName); err != nil {
+		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "flushall"}, containerName, podName); err != nil {
 			return err
 		}
 		if err := execCmd([]string{"redis-cli", "-c", "-a", pass, "cluster", "reset"}, containerName, podName); err != nil {
