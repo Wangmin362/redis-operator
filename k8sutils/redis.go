@@ -445,7 +445,6 @@ func cleanupDatabase(cr *redisv1beta1.RedisCluster, config *rest.Config, logger 
 			return err
 		}
 	}
-
 	// cleanup follower data
 	for i := int32(0); i < cr.Spec.GetReplicaCounts("follower"); i++ {
 		containerName := "redis-follower"
