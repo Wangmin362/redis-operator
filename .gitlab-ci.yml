@@ -11,6 +11,7 @@ variables: &global-variables
   MODULE_PREFIX: redis
   # 镜像私仓里的项目
   IMAGE_GROUP: devops
+  CUSTOM_IMAGE_NAME: redis-operator-v0.13.0
 
 ########################### build阶段 ###########################
 #打包镜像job
