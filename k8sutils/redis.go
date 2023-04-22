@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	redisv1beta1 "redis-operator/api/v1beta1"
 
@@ -344,6 +345,8 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 	)
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	config, err := generateK8sConfig()
+	// 3秒钟内没有返回就认为超时
+	config.Timeout = 3 * time.Second
 	if err != nil {
 		logger.Error(err, "Could not find pod to execute")
 		return
