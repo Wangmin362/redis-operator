@@ -211,6 +211,36 @@ func checkRedisCluster(cr *redisv1beta1.RedisCluster) [][]string {
 	return csvOutputRecords
 }
 
+func checkRedisClusterWithErr(cr *redisv1beta1.RedisCluster) ([][]string, error) {
+	var client *redis.Client
+	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
+	client = configureRedisClient(cr, cr.ObjectMeta.Name+"-leader-0")
+	defer client.Close()
+	cmd := redis.NewStringCmd("cluster", "nodes")
+	err := client.Process(cmd)
+	if err != nil {
+		logger.Error(err, "Redis command failed with this error")
+		return nil, err
+	}
+
+	output, err := cmd.Result()
+	if err != nil {
+		logger.Error(err, "Redis command failed with this error")
+		return nil, err
+	}
+	logger.Info("Redis cluster nodes are listed", "Output", output)
+
+	csvOutput := csv.NewReader(strings.NewReader(output))
+	csvOutput.Comma = ' '
+	csvOutput.FieldsPerRecord = -1
+	csvOutputRecords, err := csvOutput.ReadAll()
+	if err != nil {
+		logger.Error(err, "Error parsing Node Counts", "output", output)
+		return nil, err
+	}
+	return csvOutputRecords, nil
+}
+
 // ExecuteFailoverOperation will execute redis failover operations
 func ExecuteFailoverOperation(cr *redisv1beta1.RedisCluster) error {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
@@ -263,10 +293,13 @@ func executeFailoverCommand(cr *redisv1beta1.RedisCluster, role string) error {
 }
 
 // CheckRedisNodeCount will check the count of redis nodes
-func CheckRedisNodeCount(cr *redisv1beta1.RedisCluster, nodeType string) int32 {
+func CheckRedisNodeCount(cr *redisv1beta1.RedisCluster, nodeType string) (int32, error) {
 	var redisNodeType string
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
-	clusterNodes := checkRedisCluster(cr)
+	clusterNodes, err := checkRedisClusterWithErr(cr)
+	if err != nil {
+		return 0, err
+	}
 	count := len(clusterNodes)
 
 	switch nodeType {
@@ -288,7 +321,7 @@ func CheckRedisNodeCount(cr *redisv1beta1.RedisCluster, nodeType string) int32 {
 	} else {
 		logger.Info("Total number of redis nodes are", "Nodes", strconv.Itoa(count))
 	}
-	return int32(count)
+	return int32(count), nil
 }
 
 // CheckRedisClusterState will check the redis cluster state

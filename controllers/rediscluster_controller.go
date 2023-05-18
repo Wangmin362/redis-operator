@@ -123,8 +123,15 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: time.Second * 120}, nil
 	}
 	reqLogger.Info("Creating redis cluster by executing cluster creation commands", "Leaders.Ready", strconv.Itoa(int(redisLeaderInfo.Status.ReadyReplicas)), "Followers.Ready", strconv.Itoa(int(redisFollowerInfo.Status.ReadyReplicas)))
-	if k8sutils.CheckRedisNodeCount(instance, "") != totalReplicas {
-		leaderCount := k8sutils.CheckRedisNodeCount(instance, "leader")
+	totalCnt, err := k8sutils.CheckRedisNodeCount(instance, "")
+	if err != nil {
+		return ctrl.Result{RequeueAfter: time.Second * 60}, err
+	}
+	if totalCnt != totalReplicas {
+		leaderCount, err := k8sutils.CheckRedisNodeCount(instance, "leader")
+		if err != nil {
+			return ctrl.Result{RequeueAfter: time.Second * 60}, err
+		}
 		if leaderCount != leaderReplicas {
 			reqLogger.Info("Not all leader are part of the cluster...", "Leaders.Count", leaderCount, "Instance.Size", leaderReplicas)
 			k8sutils.ExecuteRedisClusterCommand(instance)
