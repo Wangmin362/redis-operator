@@ -391,6 +391,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 	}
 
 	execCmd := func() error {
+		logger.Info("create exec subresource", "podName", podName, "namespace", cr.Namespace)
 		req := generateK8sClient().CoreV1().RESTClient().Post().Resource("pods").Name(podName).Namespace(cr.Namespace).SubResource("exec")
 		req.VersionedParams(&corev1.PodExecOptions{
 			Container: pod.Spec.Containers[targetContainer].Name,
@@ -398,17 +399,20 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 			Stdout:    true,
 			Stderr:    true,
 		}, scheme.ParameterCodec)
+		logger.Info("init k8s executor", "podName", podName, "namespace", cr.Namespace, "method", "POST", "URL", req.URL())
 		exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
 		if err != nil {
 			logger.Error(err, "Failed to init executor")
 			return err
 		}
 
+		logger.Info("before execute command", "podName", podName, "namespace", cr.Namespace, "cmd", cmd)
 		err = exec.Stream(remotecommand.StreamOptions{
 			Stdout: &execOut,
 			Stderr: &execErr,
 			Tty:    false,
 		})
+		logger.Info("after execute command", "podName", podName, "namespace", cr.Namespace, "cmd", cmd)
 		return err
 	}
 
@@ -422,6 +426,7 @@ func executeCommand(cr *redisv1beta1.RedisCluster, cmd []string, podName string)
 				logger.Error(err, "cleanup redis appendonly.aof/dump.rdb/nodes.conf file error")
 				return
 			}
+			logger.Info("cleanup redis appendonly.aof/dump.rdb/nodes.conf file successful")
 
 			if err := execCmd(); err != nil {
 				logger.Info("[Again] Could not execute command", "Command", cmd, "Output", cmdResult, "Error", execErr.String())
