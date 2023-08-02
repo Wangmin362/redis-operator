@@ -45,6 +45,7 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	reqLogger.Info("Reconciling opstree redis Cluster controller")
 	instance := &redisv1beta1.RedisCluster{}
 
+	// 这里的数据应该是从Informer中获取到
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -53,34 +54,44 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	// 打了这个注解，就直接忽略
 	if _, found := instance.ObjectMeta.GetAnnotations()["rediscluster.opstreelabs.in/skip-reconcile"]; found {
 		reqLogger.Info("Found annotations rediscluster.opstreelabs.in/skip-reconcile, so skipping reconcile")
 		return ctrl.Result{RequeueAfter: time.Second * 10}, nil
 	}
 
+	// 没指定leader的话，默认就是size大小
 	leaderReplicas := instance.Spec.GetReplicaCounts("leader")
+	// 没指定leader的话，默认就是size大小
 	followerReplicas := instance.Spec.GetReplicaCounts("follower")
+	// 如果spec.Size=3，那么这里的总共副本数就是6
 	totalReplicas := leaderReplicas + followerReplicas
 
+	// 如果设置了Finalizer并且删除了RedisCluster，就需要做清理工作，这里主要是删除了pvc，statefulset以及service并没有删除
+	// 另外这里的PVC有两种，一种是普通的，另外一种是为了保存node-conf而创建的PVC文件
 	if err := k8sutils.HandleRedisClusterFinalizer(instance, r.Client); err != nil {
 		return ctrl.Result{RequeueAfter: time.Second * 60}, err
 	}
 
+	// 如果当前RedisCluster没有加入Finalizer，那么增加Finalizer
 	if err := k8sutils.AddRedisClusterFinalizer(instance, r.Client); err != nil {
 		return ctrl.Result{RequeueAfter: time.Second * 60}, err
 	}
 
 	// Check if the cluster is downscaled
+	// 通过cluster nodes命令的执行结果检查当前集群有几个leader节点
 	if leaderReplicas < k8sutils.CheckRedisNodeCount(instance, "leader") {
 
 		//  Imp if the last index of leader sts is not leader make it then
 		// check whether the redis is leader or not ?
 		// if not true then make it leader pod
 
+		// TODO 如果主从切换了，通过这一段代码就能检测到，这里我感觉所有的Leader节点都判断会合适一些
 		if !(k8sutils.VerifyLeaderPod(instance)) {
 			// lastLeaderPod is slaving right now Make it the master Pod
 			// We have to bring a manual failover here to make it a leaderPod
 			// clusterFailover should also include the clusterReplicate since we have to map the followers to new leader
+			// 执行cluster failover命令
 			k8sutils.ClusterFailover(instance)
 		}
 
@@ -95,11 +106,13 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: time.Second * 100}, nil
 	}
 
+	// 创建Leader
 	err = k8sutils.CreateRedisLeader(instance)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: time.Second * 60}, err
 	}
 	if leaderReplicas != 0 {
+		// 创建leader service
 		err = k8sutils.CreateRedisLeaderService(instance)
 		if err != nil {
 			return ctrl.Result{RequeueAfter: time.Second * 60}, err

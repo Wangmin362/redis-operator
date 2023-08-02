@@ -203,10 +203,12 @@ func (service RedisClusterSTS) getReplicaCount(cr *redisv1beta1.RedisCluster) in
 
 // CreateRedisClusterSetup will create Redis Setup for leader and follower
 func (service RedisClusterSTS) CreateRedisClusterSetup(cr *redisv1beta1.RedisCluster) error {
+	// statefulset的名字为：redis-leader
 	stateFulName := cr.ObjectMeta.Name + "-" + service.RedisStateFulType
 	logger := statefulSetLogger(cr.Namespace, stateFulName)
 	labels := getRedisLabels(stateFulName, "cluster", service.RedisStateFulType, cr.ObjectMeta.Labels)
 	annotations := generateStatefulSetsAnots(cr.ObjectMeta)
+	// 构建ObjectMeta
 	objectMetaInfo := generateObjectMetaInformation(stateFulName, cr.Namespace, labels, annotations)
 	err := CreateOrUpdateStateFul(
 		cr.Namespace,

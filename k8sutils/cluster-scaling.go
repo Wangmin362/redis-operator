@@ -384,13 +384,17 @@ func RemoveRedisNodeFromCluster(cr *redisv1beta1.RedisCluster) {
 	executeCommand(cr, cmd, cr.ObjectMeta.Name+"-leader-0")
 }
 
-// verifyLeaderPod return true if the pod is leader/master
+// VerifyLeaderPod return true if the pod is leader/master
+// 检测Leader的最后一个节点还是不是master角色
 func VerifyLeaderPod(cr *redisv1beta1.RedisCluster) bool {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
+	// 获取最后一个leader编号，譬如有三个leader,那么这里的podName为：redis-leader-2
 	podName := cr.Name + "-leader-" + strconv.Itoa(int(CheckRedisNodeCount(cr, "leader"))-1)
 
+	// 获取访问redis-leader-2 Pod的redis客户端
 	redisClient := configureRedisClient(cr, podName)
 	defer redisClient.Close()
+	// 执行info replication命令
 	info, err := redisClient.Info("replication").Result()
 	if err != nil {
 		logger.Error(err, "Failed to Get the role Info of the", "redis pod", podName)
@@ -408,6 +412,7 @@ func VerifyLeaderPod(cr *redisv1beta1.RedisCluster) bool {
 	return false
 }
 
+// ClusterFailover 执行cluster failover命令
 func ClusterFailover(cr *redisv1beta1.RedisCluster) {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	slavePodName := cr.Name + "-leader-" + strconv.Itoa(int(CheckRedisNodeCount(cr, "leader"))-1)

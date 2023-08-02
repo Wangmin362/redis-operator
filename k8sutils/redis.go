@@ -26,6 +26,7 @@ type RedisDetails struct {
 }
 
 // getRedisServerIP will return the IP of redis service
+// 获取当前Pod的IP地址
 func getRedisServerIP(redisInfo RedisDetails) string {
 	logger := generateRedisManagerLogger(redisInfo.Namespace, redisInfo.PodName)
 	redisPod, err := generateK8sClient().CoreV1().Pods(redisInfo.Namespace).Get(context.TODO(), redisInfo.PodName, metav1.GetOptions{})
@@ -198,11 +199,14 @@ func ExecuteRedisReplicationCommand(cr *redisv1beta1.RedisCluster) {
 }
 
 // checkRedisCluster will check the redis cluster have sufficient nodes or not
+// 通过在redis-leader-0 pod上执行cluster nodes命令，并把结果转换为CSV格式返回
 func checkRedisCluster(cr *redisv1beta1.RedisCluster) [][]string {
 	var client *redis.Client
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
+	// 获取redis-leader-0的Redis客户端
 	client = configureRedisClient(cr, cr.ObjectMeta.Name+"-leader-0")
 	defer client.Close()
+	// 执行cluster nodes命令，获取redis集群节点信息
 	cmd := redis.NewStringCmd("cluster", "nodes")
 	err := client.Process(cmd)
 	if err != nil {
@@ -215,6 +219,7 @@ func checkRedisCluster(cr *redisv1beta1.RedisCluster) [][]string {
 	}
 	logger.Info("Redis cluster nodes are listed", "Output", output)
 
+	// 把cluster nodes命令返回的信息转为CSV格式并返回
 	csvOutput := csv.NewReader(strings.NewReader(output))
 	csvOutput.Comma = ' '
 	csvOutput.FieldsPerRecord = -1
@@ -277,10 +282,13 @@ func executeFailoverCommand(cr *redisv1beta1.RedisCluster, role string) error {
 }
 
 // CheckRedisNodeCount will check the count of redis nodes
+// 通过执行cluster nodes命令，检查master有几个节点，或者slave有几个节点
 func CheckRedisNodeCount(cr *redisv1beta1.RedisCluster, nodeType string) int32 {
 	var redisNodeType string
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
+	// 通过在redis-leader-0 pod上执行cluster nodes命令，并把结果转换为CSV格式返回
 	clusterNodes := checkRedisCluster(cr)
+	// 获取所有的节点数量
 	count := len(clusterNodes)
 
 	switch nodeType {
@@ -308,6 +316,7 @@ func CheckRedisNodeCount(cr *redisv1beta1.RedisCluster, nodeType string) int32 {
 // CheckRedisClusterState will check the redis cluster state
 func CheckRedisClusterState(cr *redisv1beta1.RedisCluster) int {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
+	// 通过在redis-leader-0 pod上执行cluster nodes命令，并把结果转换为CSV格式返回
 	clusterNodes := checkRedisCluster(cr)
 	count := 0
 
@@ -321,6 +330,7 @@ func CheckRedisClusterState(cr *redisv1beta1.RedisCluster) int {
 }
 
 // configureRedisClient will configure the Redis Client
+// 根据RedisCluster资源中的配置信息，生成某个Pod的Redis客户端
 func configureRedisClient(cr *redisv1beta1.RedisCluster, podName string) *redis.Client {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	redisInfo := RedisDetails{
@@ -330,6 +340,7 @@ func configureRedisClient(cr *redisv1beta1.RedisCluster, podName string) *redis.
 	var client *redis.Client
 
 	if cr.Spec.KubernetesConfig.ExistingPasswordSecret != nil {
+		// 如果给redis配置了访问密码，那么从secret中获取密码
 		pass, err := getRedisPassword(cr.Namespace, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Name, *cr.Spec.KubernetesConfig.ExistingPasswordSecret.Key)
 		if err != nil {
 			logger.Error(err, "Error in getting redis password")

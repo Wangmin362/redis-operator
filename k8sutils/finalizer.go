@@ -49,9 +49,13 @@ func HandleRedisClusterFinalizer(cr *redisv1beta1.RedisCluster, cl client.Client
 	logger := finalizerLogger(cr.Namespace, RedisClusterFinalizer)
 	if cr.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(cr, RedisClusterFinalizer) {
+			// TODO 之前删除RedisCluster资源会删除Service, PVC, Statefulset，现在仅仅删除PVC？ 为啥？
+
+			// 如果设置了Finalizer，那么需要在删除RedisCluster资源对象之前删除每个节点绑定的PVC资源对象
 			if err := finalizeRedisClusterPVC(cr); err != nil {
 				return err
 			}
+			// 移除RedisCluster资源对象，然后更新此资源，K8S会看到Finalizer没了，会自动删除RedisCluster资源对象
 			controllerutil.RemoveFinalizer(cr, RedisClusterFinalizer)
 			if err := cl.Update(context.TODO(), cr); err != nil {
 				logger.Error(err, "Could not remove finalizer "+RedisClusterFinalizer)
@@ -158,6 +162,7 @@ func finalizeRedisClusterPVC(cr *redisv1beta1.RedisCluster) error {
 				return err
 			}
 		}
+		// node-conf这个pvc估计是用来保存node.conf这个配置文件的
 		for i := 0; i < int(cr.Spec.GetReplicaCounts(role)); i++ {
 			PVCName := "node-conf" + cr.Name + "-" + role + "-" + strconv.Itoa(i)
 			err := generateK8sClient().CoreV1().PersistentVolumeClaims(cr.Namespace).Delete(context.TODO(), PVCName, metav1.DeleteOptions{})
