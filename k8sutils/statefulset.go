@@ -67,8 +67,8 @@ type containerParameters struct {
 	ReadinessProbe               *redisv1beta1.Probe
 	LivenessProbe                *redisv1beta1.Probe
 	AdditionalEnvVariable        *[]corev1.EnvVar
-	AdditionalVolume             []corev1.Volume
-	AdditionalMountPath          []corev1.VolumeMount
+	AdditionalVolume             []corev1.Volume      // TODO 干嘛用的？
+	AdditionalMountPath          []corev1.VolumeMount // TODO 干嘛用的？
 }
 
 type initContainerParameters struct {
@@ -88,7 +88,9 @@ type initContainerParameters struct {
 // CreateOrUpdateStateFul method will create or update Redis service
 func CreateOrUpdateStateFul(namespace string, stsMeta metav1.ObjectMeta, params statefulSetParameters, ownerDef metav1.OwnerReference, initcontainerParams initContainerParameters, containerParams containerParameters, sidecars *[]redisv1beta1.Sidecar) error {
 	logger := statefulSetLogger(namespace, stsMeta.Name)
+	// 查询APIServer中是否存在当前statefulset
 	storedStateful, err := GetStatefulSet(namespace, stsMeta.Name)
+	// 生成StatefulSet配置
 	statefulSetDef := generateStatefulSetsDef(stsMeta, params, ownerDef, initcontainerParams, containerParams, getSidecars(sidecars))
 	if err != nil {
 		if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(statefulSetDef); err != nil {
@@ -112,6 +114,7 @@ func patchStatefulSet(storedStateful *appsv1.StatefulSet, newStateful *appsv1.St
 	newStateful.CreationTimestamp = storedStateful.CreationTimestamp
 	newStateful.ManagedFields = storedStateful.ManagedFields
 
+	// TODO 这里值得好好学习一下
 	patchResult, err := patch.DefaultPatchMaker.Calculate(storedStateful, newStateful,
 		patch.IgnoreStatusFields(),
 		patch.IgnoreVolumeClaimTemplateTypeMetaAndStatus(),
@@ -208,6 +211,7 @@ func patchStatefulSet(storedStateful *appsv1.StatefulSet, newStateful *appsv1.St
 }
 
 // generateStatefulSetsDef generates the statefulsets definition of Redis
+// 实例化StatefulSet的数据结构
 func generateStatefulSetsDef(stsMeta metav1.ObjectMeta, params statefulSetParameters, ownerDef metav1.OwnerReference, initcontainerParams initContainerParameters, containerParams containerParameters, sidecars []redisv1beta1.Sidecar) *appsv1.StatefulSet {
 	statefulset := &appsv1.StatefulSet{
 		TypeMeta:   generateMetaInformation("StatefulSet", "apps/v1"),
@@ -223,6 +227,7 @@ func generateStatefulSetsDef(stsMeta metav1.ObjectMeta, params statefulSetParame
 					Annotations: generateStatefulSetsAnots(stsMeta),
 				},
 				Spec: corev1.PodSpec{
+					// 生成容器配置，其中主要是redis-leader/redis-follow容器，redis-exporter容器的配置，如果配置了sidecar容器，还会生成sidecar容器的配置
 					Containers: generateContainerDef(
 						stsMeta.GetName(),
 						containerParams,
@@ -242,21 +247,27 @@ func generateStatefulSetsDef(stsMeta metav1.ObjectMeta, params statefulSetParame
 		},
 	}
 
+	// 生成Init容器配置
 	if initcontainerParams.Enabled != nil && *initcontainerParams.Enabled {
 		statefulset.Spec.Template.Spec.InitContainers = generateInitContainerDef(stsMeta.GetName(), initcontainerParams, initcontainerParams.AdditionalMountPath)
 	}
+	// 污点配置
 	if params.Tolerations != nil {
 		statefulset.Spec.Template.Spec.Tolerations = *params.Tolerations
 	}
 	if params.ImagePullSecrets != nil {
 		statefulset.Spec.Template.Spec.ImagePullSecrets = *params.ImagePullSecrets
 	}
+	// TODO 为什么这里仅仅判断指针是否为空，不判断具体的值
 	if containerParams.PersistenceEnabled != nil && params.ClusterMode {
+		// 添加node.conf文件的持久化
 		statefulset.Spec.VolumeClaimTemplates = append(statefulset.Spec.VolumeClaimTemplates, createPVCTemplate("node-conf", stsMeta, params.NodeConfPersistentVolumeClaim))
 	}
+	// 添加对于数据的持久化
 	if containerParams.PersistenceEnabled != nil && *containerParams.PersistenceEnabled {
 		statefulset.Spec.VolumeClaimTemplates = append(statefulset.Spec.VolumeClaimTemplates, createPVCTemplate(stsMeta.GetName(), stsMeta, params.PersistentVolumeClaim))
 	}
+	// redis自定义配置的挂在卷，本质上是一个configmap
 	if params.ExternalConfig != nil {
 		statefulset.Spec.Template.Spec.Volumes = getExternalConfig(*params.ExternalConfig)
 	}
@@ -293,6 +304,7 @@ func generateStatefulSetsDef(stsMeta metav1.ObjectMeta, params statefulSetParame
 }
 
 // getExternalConfig will return the redis external configuration
+// 创建configmap类型的挂载卷
 func getExternalConfig(configMapName string) []corev1.Volume {
 	return []corev1.Volume{
 		{
@@ -326,6 +338,7 @@ func createPVCTemplate(volumeName string, stsMeta metav1.ObjectMeta, storageSpec
 		pvcVolumeMode = *storageSpec.Spec.VolumeMode
 	}
 	pvcTemplate.Spec.VolumeMode = &pvcVolumeMode
+	// 指定PVC的容量大小
 	pvcTemplate.Spec.Resources = storageSpec.Spec.Resources
 	pvcTemplate.Spec.Selector = storageSpec.Spec.Selector
 	return pvcTemplate
@@ -335,7 +348,7 @@ func createPVCTemplate(volumeName string, stsMeta metav1.ObjectMeta, storageSpec
 func generateContainerDef(name string, containerParams containerParameters, clusterMode, enableMetrics bool, externalConfig *string, mountpath []corev1.VolumeMount, sidecars []redisv1beta1.Sidecar) []corev1.Container {
 	containerDefinition := []corev1.Container{
 		{
-			Name:            name,
+			Name:            name, // redis-leader
 			Image:           containerParams.Image,
 			ImagePullPolicy: containerParams.ImagePullPolicy,
 			SecurityContext: containerParams.SecurityContext,
@@ -356,12 +369,15 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 		},
 	}
 
+	// redis-leader资源限制
 	if containerParams.Resources != nil {
 		containerDefinition[0].Resources = *containerParams.Resources
 	}
 	if enableMetrics {
+		// 生成redis-exporter容器配置，暴露指标
 		containerDefinition = append(containerDefinition, enableRedisMonitoring(containerParams))
 	}
+	// sidecar容器配置
 	for _, sidecar := range sidecars {
 		container := corev1.Container{
 			Name:            sidecar.Name,
@@ -387,6 +403,7 @@ func generateContainerDef(name string, containerParams containerParameters, clus
 	}
 
 	if containerParams.AdditionalEnvVariable != nil {
+		// 配置额外的环境变量
 		containerDefinition[0].Env = append(containerDefinition[0].Env, *containerParams.AdditionalEnvVariable...)
 	}
 
@@ -490,6 +507,7 @@ func enableRedisMonitoring(params containerParameters) corev1.Container {
 func getVolumeMount(name string, persistenceEnabled *bool, clusterMode bool, externalConfig *string, mountpath []corev1.VolumeMount, tlsConfig *redisv1beta1.TLSConfig, aclConfig *redisv1beta1.ACLConfig) []corev1.VolumeMount {
 	var VolumeMounts []corev1.VolumeMount
 
+	// 持久化node.conf文件
 	if persistenceEnabled != nil && clusterMode {
 		VolumeMounts = append(VolumeMounts, corev1.VolumeMount{
 			Name:      "node-conf",
@@ -497,6 +515,7 @@ func getVolumeMount(name string, persistenceEnabled *bool, clusterMode bool, ext
 		})
 	}
 
+	// 持久化rdb,aof文件
 	if persistenceEnabled != nil && *persistenceEnabled {
 		VolumeMounts = append(VolumeMounts, corev1.VolumeMount{
 			Name:      name,
@@ -504,6 +523,7 @@ func getVolumeMount(name string, persistenceEnabled *bool, clusterMode bool, ext
 		})
 	}
 
+	// 持久化TLS配置
 	if tlsConfig != nil {
 		VolumeMounts = append(VolumeMounts, corev1.VolumeMount{
 			Name:      "tls-certs",
@@ -520,6 +540,8 @@ func getVolumeMount(name string, persistenceEnabled *bool, clusterMode bool, ext
 		})
 	}
 
+	// 持久化external-config
+	// TODO 1、猜测这里可以修改Redis的默认配置  2、Redis的默认配置是如何生成的？  3、用户如何再RedisCluster资源文件中指定redis的额外参数配置？
 	if externalConfig != nil {
 		VolumeMounts = append(VolumeMounts, corev1.VolumeMount{
 			Name:      "external-config",

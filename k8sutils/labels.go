@@ -42,6 +42,7 @@ func redisAsOwner(cr *redisv1beta1.Redis) metav1.OwnerReference {
 }
 
 // redisClusterAsOwner generates and returns object refernece
+// 把RedisCluster资源作为statefulset的Owner
 func redisClusterAsOwner(cr *redisv1beta1.RedisCluster) metav1.OwnerReference {
 	trueVar := true
 	return metav1.OwnerReference{

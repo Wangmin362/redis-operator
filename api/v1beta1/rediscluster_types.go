@@ -26,6 +26,7 @@ type RedisClusterSpec struct {
 	Size             *int32           `json:"clusterSize"`
 	KubernetesConfig KubernetesConfig `json:"kubernetesConfig"`
 	// +kubebuilder:default:=v7
+	// 这里应该指的是redis集群的默认版本，不同版本的reidis集群可能采取的策略不一样
 	ClusterVersion *string `json:"clusterVersion,omitempty"`
 	// +kubebuilder:default:={livenessProbe:{initialDelaySeconds: 1, timeoutSeconds: 1, periodSeconds: 10, successThreshold: 1, failureThreshold:3}, readinessProbe:{initialDelaySeconds: 1, timeoutSeconds: 1, periodSeconds: 10, successThreshold: 1, failureThreshold:3}}
 	RedisLeader RedisLeader `json:"redisLeader,omitempty"`
@@ -56,7 +57,8 @@ func (cr *RedisClusterSpec) GetReplicaCounts(t string) int32 {
 
 // RedisLeader interface will have the redis leader configuration
 type RedisLeader struct {
-	Replicas            *int32                    `json:"replicas,omitempty"`
+	Replicas *int32 `json:"replicas,omitempty"`
+	// 用于指向使用哪个configmap作为redis-leader的配置文件
 	RedisConfig         *RedisConfig              `json:"redisConfig,omitempty"`
 	SecurityContext     *corev1.SecurityContext   `json:"securityContext,omitempty"`
 	Affinity            *corev1.Affinity          `json:"affinity,omitempty"`

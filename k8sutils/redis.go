@@ -66,6 +66,7 @@ func CreateSingleLeaderRedisCommand(cr *redisv1beta1.RedisCluster) []string {
 }
 
 // CreateMultipleLeaderRedisCommand will create command for single leader cluster creation
+// 组件Leader集群：redis-cli --cluster create 10.233.97.157:6379 10.233.75.69:6379 10.233.74.65:6379 --cluster-yes -a T1XmQh9U
 func CreateMultipleLeaderRedisCommand(cr *redisv1beta1.RedisCluster) []string {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	cmd := []string{"redis-cli", "--cluster", "create"}
@@ -92,6 +93,7 @@ func CreateMultipleLeaderRedisCommand(cr *redisv1beta1.RedisCluster) []string {
 func ExecuteRedisClusterCommand(cr *redisv1beta1.RedisCluster) {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	var cmd []string
+	// 获取RedisCluster资源对象指定的leader副本数
 	replicas := cr.Spec.GetReplicaCounts("leader")
 	switch int(replicas) {
 	case 1:

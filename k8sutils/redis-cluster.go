@@ -8,7 +8,9 @@ import (
 
 // RedisClusterSTS is a interface to call Redis Statefulset function
 type RedisClusterSTS struct {
-	RedisStateFulType             string
+	// redis的角色类型，要么是follower，要么是leader
+	RedisStateFulType string
+	// redis的配置文件，这个值是configmap的名字
 	ExternalConfig                *string
 	SecurityContext               *corev1.SecurityContext
 	Affinity                      *corev1.Affinity `json:"affinity,omitempty"`
@@ -27,8 +29,8 @@ type RedisClusterService struct {
 // generateRedisClusterParams generates Redis cluster information
 func generateRedisClusterParams(cr *redisv1beta1.RedisCluster, replicas int32, externalConfig *string, params RedisClusterSTS) statefulSetParameters {
 	res := statefulSetParameters{
-		Metadata:                      cr.ObjectMeta,
-		Replicas:                      &replicas,
+		Metadata:                      cr.ObjectMeta, // metadata元数据
+		Replicas:                      &replicas,     // 副本数
 		ClusterMode:                   true,
 		NodeSelector:                  params.NodeSelector,
 		PodSecurityContext:            cr.Spec.PodSecurityContext,
@@ -39,19 +41,26 @@ func generateRedisClusterParams(cr *redisv1beta1.RedisCluster, replicas int32, e
 		ServiceAccountName:            cr.Spec.ServiceAccountName,
 		UpdateStrategy:                cr.Spec.KubernetesConfig.UpdateStrategy,
 	}
+	// 暴露指标
 	if cr.Spec.RedisExporter != nil {
 		res.EnableMetrics = cr.Spec.RedisExporter.Enabled
 	}
+	// 私有镜像的拉取的用户名密码
 	if cr.Spec.KubernetesConfig.ImagePullSecrets != nil {
 		res.ImagePullSecrets = cr.Spec.KubernetesConfig.ImagePullSecrets
 	}
+	// redis持久化存储
 	if cr.Spec.Storage != nil {
+		// 这个存储是给redis存放数据用的，也就是aof, rdb文件
 		res.PersistentVolumeClaim = cr.Spec.Storage.VolumeClaimTemplate
+		// 这个存储是给nodes.conf文件用的，这个文件记录了集群信息
 		res.NodeConfPersistentVolumeClaim = cr.Spec.Storage.NodeConfVolumeClaimTemplate
 	}
+	// redis的配置，这个值是configmap的名字
 	if externalConfig != nil {
 		res.ExternalConfig = externalConfig
 	}
+	// 如果发现了这个注解，标识statefulset需要重新创建
 	if _, found := cr.ObjectMeta.GetAnnotations()["redis.opstreelabs.in/recreate-statefulset"]; found {
 		res.RecreateStatefulSet = true
 	}
@@ -206,16 +215,23 @@ func (service RedisClusterSTS) CreateRedisClusterSetup(cr *redisv1beta1.RedisClu
 	// statefulset的名字为：redis-leader
 	stateFulName := cr.ObjectMeta.Name + "-" + service.RedisStateFulType
 	logger := statefulSetLogger(cr.Namespace, stateFulName)
+	// 获取标签，主要有app=redis-leader,redis_setup_type=cluster,role=leader
 	labels := getRedisLabels(stateFulName, "cluster", service.RedisStateFulType, cr.ObjectMeta.Labels)
+	// 获取注解
 	annotations := generateStatefulSetsAnots(cr.ObjectMeta)
-	// 构建ObjectMeta
+	// 构建ObjectMeta，主要是设置名字，名称空间，标签以及注解
 	objectMetaInfo := generateObjectMetaInformation(stateFulName, cr.Namespace, labels, annotations)
+	// 创建或者更新statefulset
 	err := CreateOrUpdateStateFul(
 		cr.Namespace,
 		objectMetaInfo,
+		// 构建创建statefulset需要的参数
 		generateRedisClusterParams(cr, service.getReplicaCount(cr), service.ExternalConfig, service),
+		// 把RedisCluster资源作为StatefulSet的Owner
 		redisClusterAsOwner(cr),
+		// 构建Init容器参数
 		generateRedisClusterInitContainerParams(cr),
+		// 构建容器参数
 		generateRedisClusterContainerParams(cr, service.SecurityContext, service.ReadinessProbe, service.LivenessProbe),
 		cr.Spec.Sidecars,
 	)
@@ -230,7 +246,9 @@ func (service RedisClusterSTS) CreateRedisClusterSetup(cr *redisv1beta1.RedisClu
 func (service RedisClusterService) CreateRedisClusterService(cr *redisv1beta1.RedisCluster) error {
 	serviceName := cr.ObjectMeta.Name + "-" + service.RedisServiceRole
 	logger := serviceLogger(cr.Namespace, serviceName)
+	// 生成标签
 	labels := getRedisLabels(serviceName, "cluster", service.RedisServiceRole, cr.ObjectMeta.Labels)
+	// 生成注解
 	annotations := generateServiceAnots(cr.ObjectMeta, nil)
 	if cr.Spec.RedisExporter != nil && cr.Spec.RedisExporter.Enabled {
 		enableMetrics = true

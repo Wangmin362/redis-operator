@@ -175,6 +175,7 @@ func RebalanceRedisClusterEmptyMasters(cr *redisv1beta1.RedisCluster) {
 
 func CheckIfEmptyMasters(cr *redisv1beta1.RedisCluster) {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
+	// 获取leader的数量
 	totalRedisLeaderNodes := CheckRedisNodeCount(cr, "leader")
 
 	for i := 0; i < int(totalRedisLeaderNodes); i++ {

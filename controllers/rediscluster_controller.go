@@ -106,7 +106,8 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: time.Second * 100}, nil
 	}
 
-	// 创建Leader
+	// 创建Leader StatefulSet，如果已经存在，就对比出前后差异，看看是否需要更新
+	// TODO 这里面的对比更新逻辑值得好好学习一下
 	err = k8sutils.CreateRedisLeader(instance)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: time.Second * 60}, err
@@ -119,16 +120,19 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	// 检查PDB
 	err = k8sutils.ReconcileRedisPodDisruptionBudget(instance, "leader", instance.Spec.RedisLeader.PodDisruptionBudget)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: time.Second * 60}, err
 	}
 
+	// 获取leader StatefulSet
 	redisLeaderInfo, err := k8sutils.GetStatefulSet(instance.Namespace, instance.ObjectMeta.Name+"-leader")
 	if err != nil {
 		return ctrl.Result{RequeueAfter: time.Second * 60}, err
 	}
 
+	// 如果Leader就绪了，就创建follower
 	if int32(redisLeaderInfo.Status.ReadyReplicas) == leaderReplicas {
 		err = k8sutils.CreateRedisFollower(instance)
 		if err != nil {
@@ -161,6 +165,8 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: time.Second * 120}, nil
 	}
 	reqLogger.Info("Creating redis cluster by executing cluster creation commands", "Leaders.Ready", strconv.Itoa(int(redisLeaderInfo.Status.ReadyReplicas)), "Followers.Ready", strconv.Itoa(int(redisFollowerInfo.Status.ReadyReplicas)))
+
+	// 执行cluster nodes命令，检查总共有几个节点，如果拿到的节点数量和期望总数不相等，说明集群组建还有问题
 	if k8sutils.CheckRedisNodeCount(instance, "") != totalReplicas {
 		leaderCount := k8sutils.CheckRedisNodeCount(instance, "leader")
 		if leaderCount != leaderReplicas {
@@ -197,6 +203,7 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Check If there is No Empty Master Node
+	// 判断Master节点分配的Slot是否为空，如果为空就重新分配Slot
 	if k8sutils.CheckRedisNodeCount(instance, "") == totalReplicas {
 		k8sutils.CheckIfEmptyMasters(instance)
 	}
