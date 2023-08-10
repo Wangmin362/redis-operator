@@ -168,17 +168,22 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// 执行cluster nodes命令，检查总共有几个节点，如果拿到的节点数量和期望总数不相等，说明集群组建还有问题
 	if k8sutils.CheckRedisNodeCount(instance, "") != totalReplicas {
+		// 通过执行cluster nodes命令，获取leader数量
 		leaderCount := k8sutils.CheckRedisNodeCount(instance, "leader")
+		// 判断leader节点数量是否和预期数量相等
 		if leaderCount != leaderReplicas {
 			reqLogger.Info("Not all leader are part of the cluster...", "Leaders.Count", leaderCount, "Instance.Size", leaderReplicas)
 			if leaderCount <= 2 {
+				// 执行此命令组建集群：redis-cli --cluster create 10.233.97.157:6379 10.233.75.69:6379 10.233.74.65:6379 --cluster-yes -a <password>
 				k8sutils.ExecuteRedisClusterCommand(instance)
 			} else {
 				if leaderCount < leaderReplicas {
 					// Scale up the cluster
 					// Step 2 : Add Redis Node
+					// 执行命令，把新的节点加入到leader-0中：redis-cli --cluster add-node 10.233.74.89:6379 10.233.74.110:6379 --cluster-slave -a <password>
 					k8sutils.AddRedisNodeToCluster(instance)
 					// Step 3 Rebalance the cluster using the empty masters
+					// 执行：redis-cli --cluster rebalance <redis>:<port> --cluster-use-empty-masters -a <pass>
 					k8sutils.RebalanceRedisClusterEmptyMasters(instance)
 				}
 			}

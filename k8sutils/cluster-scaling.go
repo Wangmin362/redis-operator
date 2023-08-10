@@ -139,7 +139,8 @@ func getRedisNodeID(cr *redisv1beta1.RedisCluster, pod RedisDetails) string {
 	return output
 }
 
-// Rebalance the Redis CLuster using the Empty Master Nodes
+// RebalanceRedisClusterEmptyMasters Rebalance the Redis CLuster using the Empty Master Nodes
+// 执行：redis-cli --cluster rebalance <redis>:<port> --cluster-use-empty-masters -a <pass>
 func RebalanceRedisClusterEmptyMasters(cr *redisv1beta1.RedisCluster) {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	// cmd = redis-cli --cluster rebalance <redis>:<port> --cluster-use-empty-masters -a <pass>
@@ -226,10 +227,12 @@ func RebalanceRedisCluster(cr *redisv1beta1.RedisCluster) {
 	executeCommand(cr, cmd, cr.ObjectMeta.Name+"-leader-1")
 }
 
-// Add redis cluster node would add a node to the existing redis cluster using redis-cli
+// AddRedisNodeToCluster Add redis cluster node would add a node to the existing redis cluster using redis-cli
+// 执行命令，把新的节点加入到leader-0中：redis-cli --cluster add-node 10.233.74.89:6379 10.233.74.110:6379 --cluster-slave -a <password>
 func AddRedisNodeToCluster(cr *redisv1beta1.RedisCluster) {
 	logger := generateRedisManagerLogger(cr.Namespace, cr.ObjectMeta.Name)
 	var cmd []string
+	// 通过执行cluster nodes命令，获取leader节点的数量
 	activeRedisNode := CheckRedisNodeCount(cr, "leader")
 
 	newPod := RedisDetails{
