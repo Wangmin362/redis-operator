@@ -197,6 +197,7 @@ func (r *RedisClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	} else {
 		reqLogger.Info("Redis leader count is desired")
+		// 如果处于fail或者disconnected的节点数量大于等于总数量-1，那么就重建集群。譬如有6个节点，只要有5个节点处于fail或者disconnected，就需要重建集群
 		if int(totalReplicas) > 1 && k8sutils.CheckRedisClusterState(instance) >= int(totalReplicas)-1 {
 			reqLogger.Info("Redis leader is not desired, executing failover operation")
 			err = k8sutils.ExecuteFailoverOperation(instance)
